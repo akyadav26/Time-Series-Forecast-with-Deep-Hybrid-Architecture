@@ -12,8 +12,33 @@ from models import LSTNet
 import numpy as np;
 import importlib
 
+import matplotlib.pyplot as plt
+
 from utils import *;
 import Optim
+
+def plot_separate(history, epoch, output_dir, plot_type='loss'):
+    if plot_type == 'loss':
+        plt.clf()
+        plt.xlabel('Epoch')
+        plt.ylabel('Training ' + plot_type.upper())
+        plt.plot([history[k][0][plot_type] for k in range(epoch)], label="training_{}".format(plot_type))
+        plt.legend()
+        plots_path = os.path.join(output_dir, "plots")
+        if not os.path.exists(plots_path):
+            os.mkdir(plots_path)
+        plt.savefig(plots_path + '/plot_training_{}.png'.format(plot_type))
+    
+    plt.clf()
+    plt.xlabel('Epoch')
+    plt.ylabel('Validation ' + plot_type.upper())
+    plt.plot([history[k][1][plot_type] for k in range(epoch)], label="validation_{}".format(plot_type))
+    plt.legend()
+    plots_path = os.path.join(output_dir, "plots")
+    if not os.path.exists(plots_path):
+        os.mkdir(plots_path)
+    plt.savefig(plots_path + '/plot_validation_{}.png'.format(plot_type))
+
 
 def evaluate(data, X, Y, model, evaluateL2, evaluateL1, batch_size):
     model.eval();
@@ -71,7 +96,7 @@ def checkpoint(checkpoint_path, model, optimizer, history):
     state = {'Net': model.state_dict(),
                 'Optimizer': optimizer.state_dict(),
                 'History': history}
-    print('Saving to', checkpoint_path)
+#     print('Saving to', checkpoint_path)
     torch.save(state, checkpoint_path)
 
 def load_checkpoint(checkpoint_path, model, optimizer, history):
@@ -115,8 +140,8 @@ parser.add_argument('--log_interval', type=int, default=2000, metavar='N',
                     help='report interval')
 parser.add_argument('--save', type=str,  default='../LSTNetLogs/save/model.pt',
                     help='path to save the final model')
-parser.add_argument('--best', type=str,  default='../LSTNetLogs/save/best_model.pt',
-                    help='path to save the best model')
+# parser.add_argument('--best', type=str,  default='../LSTNetLogs/save/best_model.pt',
+#                     help='path to save the best model')
 parser.add_argument('--cuda', type=str, default=True)
 parser.add_argument('--optim', type=str, default='adam')
 parser.add_argument('--lr', type=float, default=0.001)
@@ -171,15 +196,13 @@ optim = Optim.Optim(
 
 history = []
 
-if os.path.exists(args.best):
-    model, optim.optimizer, history = load_checkpoint(args.best, model, optim.optimizer, history)
-elif os.path.exists(args.save):
-    os.makedirs(args.best)
-    model, optim.optimizer, history = load_checkpoint(args.save, model, optim.optimizer, history)
+if os.path.exists(os.path.join(args.save, 'best_model.pt')):
+    model, optim.optimizer, history = load_checkpoint(os.path.join(args.save,'best_model.pt'), model, optim.optimizer, history)
+elif os.path.exists(os.path.join(args.save, 'model.pt')):
+    model, optim.optimizer, history = load_checkpoint(os.path.join(args.save, 'model.pt'), model, optim.optimizer, history)
 else:
     os.makedirs(args.save)
-    os.makedirs(args.best)
-    
+
 # At any point you can hit Ctrl + C to break out of training early.
 
 start_epoch = len(history)
@@ -192,17 +215,24 @@ try:
         
         #Save the model, optim, history and val_history
         history.append(({'loss':train_loss}, {'loss' : val_loss, 'rae' : val_rae, 'corr' : val_corr}))
-        checkpoint(args.save, model, optim.optimizer, history)
-        
+        checkpoint(os.path.join(args.save, 'model.pt'), model, optim.optimizer, history)
+        #plot the statistics
+        plot_separate(history, epoch, output_dir = args.save, plot_type='loss')
+        plot_separate(history, epoch, output_dir = args.save, plot_type='rae')
+        plot_separate(history, epoch, output_dir = args.save, plot_type='corr')
         # Save the model if the validation loss is the best we've seen so far.
         if val_loss < best_val:
-            checkpoint(args.best, model, optim.optimizer, history)
+            checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
             best_val = val_loss
             
         print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.4f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_loss, val_rae, val_corr))
         
         if epoch % 5 == 0:
             test_acc, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateL2, evaluateL1, args.batch_size);
+            test_stats = dict()
+            test_stats = {'test_acc':test_acc, 'test_rae':test_rae, 'test_corr': test_corr}
+            test_stat_path = os.path.join(args.save, 'test_stat.pt')
+            torch.save(test_stats,test_stat_path)
             print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
 
 except KeyboardInterrupt:
@@ -211,6 +241,10 @@ except KeyboardInterrupt:
 
 # Load the best saved model.
 
-model, optim, history = load_checkpoint(args.best, model, optim.optimizer, history)
+model, optim, history = load_checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
 test_acc, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateL2, evaluateL1, args.batch_size);
+test_stats = dict()
+test_stats = {'test_acc':test_acc, 'test_rae':test_rae, 'test_corr': test_corr}
+test_stat_path = os.path.join(args.save, 'test_stat.pt')
+torch.save(test_stats,test_stat_path)
 print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
