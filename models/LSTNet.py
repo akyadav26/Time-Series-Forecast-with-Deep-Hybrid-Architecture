@@ -8,11 +8,11 @@ class Model(nn.Module):
         self.use_cuda = args.cuda
         self.P = args.window;
         self.m = data.m
-        self.hidR = args.hidRNN;
+        self.hidR =args.hidRNN;
         self.hidC = args.hidCNN;
         self.hidS = args.hidSkip;
         self.Ck = args.CNN_kernel;
-        self.skip = args.skip;
+        self.skip = int(args.skip);
 #         self.pt = (self.P - self.Ck)/self.skip
         self.hw = args.highway_window
         self.conv1 = nn.Conv2d(1, self.hidC, kernel_size = (self.Ck, self.m));
@@ -20,7 +20,7 @@ class Model(nn.Module):
         self.dropout = nn.Dropout(p = args.dropout);
         if (self.skip > 0):
             self.GRUskip = nn.GRU(self.hidC, self.hidS);
-            self.linear1 = nn.Linear(self.hidR + self.skip * self.hidS, self.m);
+            self.linear1 = nn.Linear(int(self.hidR + self.skip * self.hidS), self.m);
         else:
             self.linear1 = nn.Linear(self.hidR, self.m);
         if (self.hw > 0):
@@ -35,6 +35,8 @@ class Model(nn.Module):
         batch_size = x.size(0);
         
         #CNN
+        
+#         print('Input Shape: ', x.shape)
         c = x.view(-1, 1, self.P, self.m);
         c = F.relu(self.conv1(c));
         c = self.dropout(c);
@@ -42,23 +44,31 @@ class Model(nn.Module):
         
         # RNN 
         r = c.permute(2, 0, 1).contiguous();
+#         print("Shape after Contiguous =",r.shape)
         _, r = self.GRU1(r);
+#         print("Shape after GRU =",r.shape)
         r = self.dropout(torch.squeeze(r,0));
 
         
         #skip-rnn
         
         if (self.skip > 0):
-            self.pt = (self.P - self.Ck)/self.skip
+            self.pt = (self.P - self.Ck)//self.skip
+#             print('pt = ',self.pt)
             s = c[:,:, int(-self.pt * self.skip):].contiguous();
+#             print(s.shape)
             s = s.view(int(batch_size), int(self.hidC), int(self.pt), int(self.skip));
+#             print(s.shape)
             s = s.permute(2,0,3,1).contiguous();
+#             print(s.shape)
             s = s.view(self.pt, batch_size * self.skip, self.hidC);
             _, s = self.GRUskip(s);
+#             print(s.shape)
             s = s.view(batch_size, self.skip * self.hidS);
+#             print(s.shape)
             s = self.dropout(s);
             r = torch.cat((r,s),1);
-        
+#             print(r.shape)
         res = self.linear1(r);
         
         #highway
