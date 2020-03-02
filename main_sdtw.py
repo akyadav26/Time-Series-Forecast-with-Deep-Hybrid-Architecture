@@ -152,7 +152,7 @@ parser.add_argument('--cuda', type=str, default=True)
 parser.add_argument('--optim', type=str, default='adam')
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--horizon', type=int, default=24)
-parser.add_argument('--skip', type=float, default=0)
+parser.add_argument('--skip', type=float, default=24)
 parser.add_argument('--hidSkip', type=int, default=5)
 parser.add_argument('--loss', type=str, default='sdtw')
 parser.add_argument('--normalize', type=int, default=2)
@@ -184,7 +184,7 @@ if torch.cuda.is_available():
     else:
         torch.cuda.manual_seed(args.seed)
 
-Data = Data_utility(args.data, 0.6, 0.2, args.cuda, args.horizon, args.window, args.normalize);
+Data = Data_utility(args.data, 0.75, 0, args.cuda, args.horizon, args.window, args.normalize);
 print(Data.rse);
 
 model = eval(args.model).Model(args, Data);
@@ -210,6 +210,7 @@ if args.cuda:
     evaluateL2 = evaluateL2.cuda();
     
 best_val = 10000000;
+best_trse = 10000000;
 optim = Optim.Optim(
     model.parameters(), args.optim, args.lr, args.clip,
 )
@@ -231,23 +232,23 @@ try:
     for epoch in range(start_epoch + 1, args.epochs + 1):
         epoch_start_time = time.time()
         train_loss = train(Data, Data.train[0], Data.train[1], model, criterion, optim, args.batch_size)
-        val_sdtw, val_rse, val_rae, val_corr = evaluate(Data, Data.valid[0], Data.valid[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
+#         val_sdtw, val_rse, val_rae, val_corr = evaluate(Data, Data.valid[0], Data.valid[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
         
         #Save the model, optim, history and val_history
-        history.append(({args.loss:train_loss}, {'sdtw' : val_sdtw, 'rae' : val_rae,'rse' : val_rse, 'corr' : val_corr}))
+        history.append(({args.loss:train_loss}))#, {'sdtw' : val_sdtw, 'rae' : val_rae,'rse' : val_rse, 'corr' : val_corr}))
         checkpoint(os.path.join(args.save, 'model.pt'), model, optim.optimizer, history)
         #plot the statistics
-        plot_separate(history, epoch, output_dir = args.save, plot_type='sdtw')
-        plot_separate(history, epoch, output_dir = args.save, plot_type='rse')
-        plot_separate(history, epoch, output_dir = args.save, plot_type='rae')
-        plot_separate(history, epoch, output_dir = args.save, plot_type='corr')
+#         plot_separate(history, epoch, output_dir = args.save, plot_type='sdtw')
+#         plot_separate(history, epoch, output_dir = args.save, plot_type='rse')
+#         plot_separate(history, epoch, output_dir = args.save, plot_type='rae')
+#         plot_separate(history, epoch, output_dir = args.save, plot_type='corr')
         # Save the model if the validation loss is the best we've seen so far.
-        if val_sdtw < best_val:
-            checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
-            best_val = val_sdtw
+#         if val_sdtw < best_val:
+#             checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
+#             best_val = val_sdtw
             
-        print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.4f} | valid sdtw {:5.4f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_sdtw, val_rse, val_rae, val_corr))
-        
+#         print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.4f} | valid sdtw {:5.4f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_sdtw, val_rse, val_rae, val_corr))
+        print(' end of epoch')
         if epoch % 5 == 0:
             test_sdtw, test_rse, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
             test_stats = dict()
@@ -255,6 +256,9 @@ try:
             test_stat_path = os.path.join(args.save, 'test_stat.pt')
             torch.save(test_stats,test_stat_path)
             print ("test sdtw {:5.4f} | test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_sdtw, test_rse, test_rae, test_corr))
+            if test_rse < best_trse:
+                checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
+                best_trse = test_rse
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')

@@ -121,8 +121,8 @@ class Model(nn.Module):
             z = z.view(-1,self.m);
             res = res + z;
             
-        if (self.output):
-            res = self.output(res);
+#         if (self.output):
+#             res = self.output(res);
         return res;
     
         
