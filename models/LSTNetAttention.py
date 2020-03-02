@@ -8,24 +8,26 @@ class Model(nn.Module):
         self.use_cuda = args.cuda
         self.P = args.window;
         self.m = data.m
-        self.hidR =args.hidRNN;
+        self.hidR = args.hidCNN; #not self.hidRNN, since we are constrained to keep it the same as conv outs
         self.hidC = args.hidCNN;
         self.hidS = args.hidSkip;
-        
-        self.attention_dim = 128
-        #linear layer to convert conv and gru output and get attention map across conv
-        
-        self.gru_attention = nn.Linear()
-        
+       
         self.Ck = args.CNN_kernel;
         self.skip = 0;#int(args.skip);
 #         self.pt = (self.P - self.Ck)/self.skip
         self.hw = args.highway_window
         self.conv1 = nn.Conv2d(1, self.hidC, kernel_size = (self.Ck, self.m));
-        self.GRU1 = nn.GRU(self.hidC, self.hidR);
+#         self.GRU1 = nn.GRU(self.hidC, self.hidR);
+        
+        #linear layer to convert conv and gru output and get attention map across conv
         
         self.LSTM_cell = nn.LSTMCell(self.hidC, self.hidR)
+        self.LSTM_cell = self.LSTM_cell.cuda()
         
+        self.conv_out_dim = self.P - self.Ck + 1
+        #attention is only applied upto the second last
+        self.att_layer = nn.Linear(self.conv_out_dim - 1, 1)
+        self.att_layer = self.att_layer.cuda()
         
         self.dropout = nn.Dropout(p = args.dropout);
         if (self.skip > 0):
@@ -54,12 +56,37 @@ class Model(nn.Module):
         
         # RNN 
         r = c.permute(2, 0, 1).contiguous();
-        print("Shape after Contiguous =",r.shape)
+#         print("Shape after Contiguous =",r.shape)
 #         _, r = self.GRU1(r);
-
         
-        print("Shape after GRU =",r.shape)
-        r = self.dropout(torch.squeeze(r,0));
+        r = r.cuda()
+        batch_size = r.shape[1]
+        output = torch.zeros(r.shape[0] - 1,batch_size, self.hidR)
+#         print(output.shape)
+        c = torch.randn(batch_size,self.hidR).cuda()
+        h = torch.randn(batch_size,self.hidR).cuda()
+        
+        #feed the input per timestep until the second last timestep, and compute the hidden state/output per ts:
+        for i in range(r.shape[0] - 1):
+            h, c = self.LSTM_cell(r[i], (h, c))
+            output[i] = h
+        
+        output = output.permute(1,2,0).contiguous()
+        output = output.cuda()
+        
+        #compute the attention weighted sum of all the past hidden states:
+        attn_out = self.att_layer(output)
+#         print(attn_out.shape)
+#         print(output[:,:,output.shape[2] - 1].shape)
+#         attn_out = attn_out.permute(2,0,1).contiguous().cuda()
+        
+        #add the attention weighted sum of all past hidden states to the last hidden state
+        combined = torch.squeeze(attn_out) + output[:,:,output.shape[2] - 1]
+#         print(combined.shape)
+        #feed the combined sum to the LSTM cell to get the final output
+        out, c = self.LSTM_cell(combined,(h,c))
+        
+#         r = self.dropout(torch.squeeze(r,0));
 
         
         #skip-rnn
@@ -81,8 +108,8 @@ class Model(nn.Module):
             s = self.dropout(s);
             r = torch.cat((r,s),1);
 #             print(r.shape)
-        res = self.linear1(r);
         
+        res = self.linear1(out);
         #highway
         if (self.hw > 0):
             z = x[:, -self.hw:, :];
