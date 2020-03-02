@@ -106,10 +106,10 @@ def checkpoint(checkpoint_path, model, optimizer, history):
     torch.save(state, checkpoint_path)
 
 def load_checkpoint(checkpoint_path, model, optimizer, history):
-
+    global device
     checkpt = []
     with open(checkpoint_path, 'rb') as f:
-        checkpt = torch.load(checkpoint_path)
+        checkpt = torch.load(checkpoint_path, map_location = device)
     model.load_state_dict(checkpt['Net'])
     optimizer.load_state_dict(checkpt['Optimizer'])
     history = checkpt['History']
@@ -172,8 +172,10 @@ parser.add_argument('--output_fun', type=str, default='sigmoid')
 args = parser.parse_args()
 
 args.cuda = args.gpu is not None
+device = 'cpu'
 if args.cuda:
     torch.cuda.set_device(args.gpu)
+    device = 'cuda'
 # Set the random seed manually for reproducibility.
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
