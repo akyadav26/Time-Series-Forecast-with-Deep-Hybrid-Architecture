@@ -18,8 +18,9 @@ import matplotlib.pyplot as plt
 from utils import *;
 import Optim
 
-def plot_separate(history, epoch, output_dir, plot_type='loss'):
-    if plot_type == 'loss':
+def plot_separate(history, epoch, output_dir, plot_type):
+    global args
+    if plot_type == args.loss:
         plt.clf()
         plt.xlabel('Epoch')
         plt.ylabel('Training ' + plot_type.upper())
@@ -41,10 +42,11 @@ def plot_separate(history, epoch, output_dir, plot_type='loss'):
     plt.savefig(plots_path + '/plot_validation_{}.png'.format(plot_type))
 
 
-def evaluate(data, X, Y, model, evaluateL2, evaluateL1, batch_size):
+def evaluate(data, X, Y, model, evaluateSDTW, evaluateL2, evaluateL1, batch_size):
     model.eval();
     total_loss = 0;
     total_loss_l1 = 0;
+    total_sdtw = 0
     n_samples = 0;
     predict = None;
     test = None;
@@ -58,12 +60,14 @@ def evaluate(data, X, Y, model, evaluateL2, evaluateL1, batch_size):
             predict = torch.cat((predict,output));
             test = torch.cat((test, Y));
         
+        total_sdtw += evaluateSDTW(output, Y).item()
         scale = data.scale.expand(output.size(0), data.m)
         total_loss += evaluateL2(output * scale, Y * scale).item()#data[0]
         total_loss_l1 += evaluateL1(output * scale, Y * scale).item()#data[0]
         n_samples += (output.size(0) * data.m);
     rse = math.sqrt(total_loss / n_samples)/data.rse
     rae = (total_loss_l1/n_samples)/data.rae
+    sdtw = total_sdtw / n_samples
     
     predict = predict.data.cpu().numpy();
     Ytest = test.data.cpu().numpy();
@@ -74,7 +78,7 @@ def evaluate(data, X, Y, model, evaluateL2, evaluateL1, batch_size):
     index = (sigma_g!=0);
     correlation = ((predict - mean_p) * (Ytest - mean_g)).mean(axis = 0)/(sigma_p * sigma_g);
     correlation = (correlation[index]).mean();
-    return rse, rae, correlation;
+    return sdtw, rse, rae, correlation;
 
 def train(data, X, Y, model, criterion, optim, batch_size):
     model.train();
@@ -150,10 +154,21 @@ parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--horizon', type=int, default=24)
 parser.add_argument('--skip', type=float, default=24)
 parser.add_argument('--hidSkip', type=int, default=5)
-parser.add_argument('--L1Loss', type=bool, default=True)
+parser.add_argument('--loss', type=str, default='sdtw')
 parser.add_argument('--normalize', type=int, default=2)
 parser.add_argument('--output_fun', type=str, default='sigmoid')
 
+'''python main_sdtw.py --loss l2 --save ../LSTNetLogs/elec-l2-f-24 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --save ../LSTNetLogs/elec-sdtw-f-24 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --horizon 12 --save ../LSTNetLogs/elec-sdtw-f-12 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --horizon 6 --save ../LSTNetLogs/elec-sdtw-f-6 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --horizon 3 --save ../LSTNetLogs/elec-sdtw-f-3 --data data/electricity.txt
+   
+   python main_sdtw.py --loss sdtw --save ../LSTNetLogs/elec-sdtw-lstm-24 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --save ../LSTNetLogs/elec-sdtw-var-24 --data data/electricity.txt
+   python main_sdtw.py --loss sdtw --save ../LSTNetLogs/elec-sdtw-novar-24 --data data/electricity.txt
+   
+'''
 args = parser.parse_args()
 
 args.cuda = args.gpu is not None
@@ -178,18 +193,19 @@ if args.cuda:
 nParams = sum([p.nelement() for p in model.parameters()])
 print('* number of parameters: %d' % nParams)
 
-if args.L1Loss:
+if args.loss == 'rae':
     criterion = nn.L1Loss(size_average=False);
-else:
+elif args.loss == 'rse':
     criterion = nn.MSELoss(size_average=False);
+elif args.loss == 'sdtw':
+    criterion = SoftDTW()
 evaluateL2 = nn.MSELoss(size_average=False);
 evaluateL1 = nn.L1Loss(size_average=False)
+evaluateSDTW = SoftDTW()
 if args.cuda:
     criterion = criterion.cuda()
     evaluateL1 = evaluateL1.cuda();
     evaluateL2 = evaluateL2.cuda();
-    
-soft_criterion = SoftDTW()
     
 best_val = 10000000;
 optim = Optim.Optim(
@@ -212,31 +228,31 @@ try:
     print('begin training');
     for epoch in range(start_epoch + 1, args.epochs + 1):
         epoch_start_time = time.time()
-        train_loss = train(Data, Data.train[0], Data.train[1], model, soft_criterion, optim, args.batch_size)
-        val_loss, val_rae, val_corr = evaluate(Data, Data.valid[0], Data.valid[1], model, evaluateL2, evaluateL1, args.batch_size);
+        train_loss = train(Data, Data.train[0], Data.train[1], model, criterion, optim, args.batch_size)
+        val_sdtw, val_rse, val_rae, val_corr = evaluate(Data, Data.valid[0], Data.valid[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
         
         #Save the model, optim, history and val_history
-        history.append(({'loss':train_loss}, {'loss' : val_loss, 'rae' : val_rae, 'corr' : val_corr}))
+        history.append(({args.loss:train_loss}, {'sdtw' : val_sdtw, 'rae' : val_rae,'rse' : val_rse, 'corr' : val_corr}))
         checkpoint(os.path.join(args.save, 'model.pt'), model, optim.optimizer, history)
         #plot the statistics
-        plot_separate(history, epoch, output_dir = args.save, plot_type='loss')
+        plot_separate(history, epoch, output_dir = args.save, plot_type='sdtw')
+        plot_separate(history, epoch, output_dir = args.save, plot_type='rse')
         plot_separate(history, epoch, output_dir = args.save, plot_type='rae')
         plot_separate(history, epoch, output_dir = args.save, plot_type='corr')
         # Save the model if the validation loss is the best we've seen so far.
-        if val_loss < best_val:
+        if val_sdtw < best_val:
             checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
-            best_val = val_loss
+            best_val = val_sdtw
             
-        print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.4f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_loss, val_rae, val_corr))
+        print('| end of epoch {:3d} | time: {:5.2f}s | train_loss {:5.4f} | valid sdtw {:5.4f} | valid rse {:5.4f} | valid rae {:5.4f} | valid corr  {:5.4f}'.format(epoch, (time.time() - epoch_start_time), train_loss, val_sdtw, val_rse, val_rae, val_corr))
         
         if epoch % 5 == 0:
-            test_acc, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateL2, evaluateL1, args.batch_size);
+            test_sdtw, test_rse, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
             test_stats = dict()
-            test_stats = {'test_acc':test_acc, 'test_rae':test_rae, 'test_corr': test_corr}
+            test_stats = {'test_sdtw':test_sdtw, 'test_rae':test_rae,'test_rse':test_rse, 'test_corr': test_corr}
             test_stat_path = os.path.join(args.save, 'test_stat.pt')
             torch.save(test_stats,test_stat_path)
-            print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
-
+            print ("test sdtw {:5.4f} | test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_sdtw, test_rse, test_rae, test_corr))
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
@@ -244,9 +260,9 @@ except KeyboardInterrupt:
 # Load the best saved model.
 
 model, optim, history = load_checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
-test_acc, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateL2, evaluateL1, args.batch_size);
+test_sdtw, test_rse, test_rae, test_corr  = evaluate(Data, Data.test[0], Data.test[1], model, evaluateSDTW, evaluateL2, evaluateL1, args.batch_size);
 test_stats = dict()
-test_stats = {'test_acc':test_acc, 'test_rae':test_rae, 'test_corr': test_corr}
+test_stats = {'test_sdtw':test_sdtw, 'test_rae':test_rae,'test_rse':test_rse, 'test_corr': test_corr}
 test_stat_path = os.path.join(args.save, 'test_stat.pt')
 torch.save(test_stats,test_stat_path)
-print ("test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_acc, test_rae, test_corr))
+print ("test sdtw {:5.4f} | test rse {:5.4f} | test rae {:5.4f} | test corr {:5.4f}".format(test_sdtw, test_rse, test_rae, test_corr))
