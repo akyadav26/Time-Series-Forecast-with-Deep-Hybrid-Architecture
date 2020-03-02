@@ -15,7 +15,13 @@ class Data_utility(object):
         fin = open(file_name);
         self.rawdat = np.loadtxt(fin,delimiter=',');
         self.dat = np.zeros(self.rawdat.shape);
-        self.n, self.m = self.dat.shape;
+        try:
+            self.n, self.m = self.dat.shape;
+        except:
+            self.n = self.dat.shape[0]
+            self.m = 1
+            self.rawdat = np.expand_dims(self.rawdat, 1)
+            self.dat = np.zeros(self.rawdat.shape);
         self.normalize = 2
         self.scale = np.ones(self.m);
         self._normalized(normalize);

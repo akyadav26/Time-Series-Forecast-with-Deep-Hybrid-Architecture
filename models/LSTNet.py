@@ -25,6 +25,9 @@ class Model(nn.Module):
             self.linear1 = nn.Linear(self.hidR, self.m);
         if (self.hw > 0):
             self.highway = nn.Linear(self.hw, 1);
+
+
+
         self.output = None;
         if (args.output_fun == 'sigmoid'):
             self.output = F.sigmoid;
@@ -70,7 +73,6 @@ class Model(nn.Module):
             r = torch.cat((r,s),1);
 #             print(r.shape)
         res = self.linear1(r);
-        
         #highway
         if (self.hw > 0):
             z = x[:, -self.hw:, :];
