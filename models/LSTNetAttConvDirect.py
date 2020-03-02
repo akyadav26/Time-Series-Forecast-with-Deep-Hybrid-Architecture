@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 class Model(nn.Module):
     def __init__(self, args, data):
@@ -25,10 +26,11 @@ class Model(nn.Module):
         self.LSTM_cell = self.LSTM_cell.cuda()
         
         self.conv_out_dim = self.P - self.Ck + 1
-        #attention is only applied upto the second last timestep
-        self.att_layer = nn.Linear(self.hidC, 1)
+        #attention is NOT only applied upto the second last
+        self.att_layer = nn.Linear(self.conv_out_dim, 1)
         self.att_layer = self.att_layer.cuda()
         self.att_softmax = nn.Softmax(dim = 1)
+        
         self.dropout = nn.Dropout(p = args.dropout);
         if (self.skip > 0):
             self.GRUskip = nn.GRU(self.hidC, self.hidS);
@@ -61,33 +63,36 @@ class Model(nn.Module):
         
         r = r.cuda()
         batch_size = r.shape[1]
-        output = torch.zeros(r.shape[0] - 1,batch_size, self.hidR)
+        output = torch.zeros(r.shape[0],batch_size, self.hidR)
 #         print(output.shape)
         c = torch.randn(batch_size,self.hidR).cuda()
         h = torch.randn(batch_size,self.hidR).cuda()
         
-        #feed the input per timestep until the second last timestep, and compute the hidden state/output per ts:
-        for i in range(r.shape[0] - 1):
+        #feed the input per timestep until the LAST timestep, and compute the hidden state/output per ts:
+        for i in range(r.shape[0]):
             h, c = self.LSTM_cell(r[i], (h, c))
             output[i] = h
-#         print(output.shape) #162,128,100
-        output = output.permute(1,0,2).contiguous()
+        
+        output = output.permute(1,2,0).contiguous()
         output = output.cuda()
         
         #compute the attention weighted sum of all the past hidden states:
         attn_out = self.att_layer(output)
-        attn_out_sm = self.att_softmax(attn_out) #128, 162
+        print(attn_out.shape)
+        attn_out = self.att_softmax(attn_out)
         
-        #now multiply this across all 100 dimensions of the cnn output and sum over the timestep part
-        #(get weighted sum of all timesteps ke outputs)
-
-        attn_out = (output * attn_out_sm).sum(1)
+#         print(attn_out.shape)
+#         print(output[:,:,output.shape[2] - 1].shape)
+#         attn_out = attn_out.permute(2,0,1).contiguous().cuda()
         
         #add the attention weighted sum of all past hidden states to the last hidden state
-        combined = attn_out + output[:,output.shape[1] - 1,:]
         
+        #combined = torch.squeeze(attn_out) + output[:,:,output.shape[2] - 1]
+#       
+        #print(combined.shape)
         #feed the combined sum to the LSTM cell to get the final output
-        out, c = self.LSTM_cell(combined,(h,c))
+        
+#         out, c = self.LSTM_cell(combined,(h,c))
         
 #         r = self.dropout(torch.squeeze(r,0));
 

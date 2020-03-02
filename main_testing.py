@@ -121,7 +121,7 @@ parser.add_argument('--data', type=str, required=True,
                     help='location of the data file')
 parser.add_argument('--model', type=str, default='LSTNetAttention',
                     help='')
-parser.add_argument('--hidCNN', type=int, default=120,
+parser.add_argument('--hidCNN', type=int, default=100,
                     help='number of CNN hidden units')
 parser.add_argument('--hidRNN', type=int, default=100,
                     help='number of RNN hidden units')
