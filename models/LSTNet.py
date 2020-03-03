@@ -73,6 +73,8 @@ class Model(nn.Module):
             r = torch.cat((r,s),1);
 #             print(r.shape)
         res = self.linear1(r);
+        if (self.output):
+            res = self.output(res);
         #highway
         if (self.hw > 0):
             z = x[:, -self.hw:, :];
@@ -81,8 +83,7 @@ class Model(nn.Module):
             z = z.view(-1,self.m);
             res = res + z;
             
-#         if (self.output):
-#             res = self.output(res);
+
         return res;
     
         

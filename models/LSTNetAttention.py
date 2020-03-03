@@ -35,8 +35,8 @@ class Model(nn.Module):
             self.linear1 = nn.Linear(int(self.hidR + self.skip * self.hidS), self.m);
         else:
             self.linear1 = nn.Linear(self.hidR, self.m);
-        if (self.hw > 0):
-            self.highway = nn.Linear(self.hw, 1);
+#         if (self.hw > 0):
+#             self.highway = nn.Linear(self.hw, 1);
         self.output = None;
         if (args.output_fun == 'sigmoid'):
             self.output = F.sigmoid;
@@ -114,12 +114,12 @@ class Model(nn.Module):
         
         res = self.linear1(out);
         #highway
-        if (self.hw > 0):
-            z = x[:, -self.hw:, :];
-            z = z.permute(0,2,1).contiguous().view(-1, self.hw);
-            z = self.highway(z);
-            z = z.view(-1,self.m);
-            res = res + z;
+#         if (self.hw > 0):
+#             z = x[:, -self.hw:, :];
+#             z = z.permute(0,2,1).contiguous().view(-1, self.hw);
+#             z = self.highway(z);
+#             z = z.view(-1,self.m);
+#             res = res + z;
             
 #         if (self.output):
 #             res = self.output(res);

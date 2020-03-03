@@ -15,7 +15,7 @@ import importlib
 
 import matplotlib.pyplot as plt
 
-from utils import *;
+from plot_utils import *;
 import Optim
 
 def plot_separate(history, epoch, output_dir, plot_type):
@@ -184,7 +184,7 @@ if torch.cuda.is_available():
     else:
         torch.cuda.manual_seed(args.seed)
 
-Data = Data_utility(args.data, 0.6, 0.2, args.cuda, args.horizon, args.window, args.normalize);
+Data = Data_utility(args.data, 0.75, 0, args.cuda, args.horizon, args.window, args.normalize);
 print(Data.rse);
 
 model = eval(args.model).Model(args, Data);

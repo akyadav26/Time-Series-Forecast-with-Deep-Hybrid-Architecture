@@ -15,7 +15,7 @@ import nntools
 
 import torch
 import torch.nn as nn
-from models import LSTNet
+from models import LSTNetAttConvDirect
 import numpy as np;
 import importlib
 
@@ -82,7 +82,7 @@ def preds(data, X, Y, model, batch_size):
 parser = argparse.ArgumentParser(description='PyTorch Time series forecasting')
 parser.add_argument('--data', type=str, required=True,
                     help='location of the data file')
-parser.add_argument('--model', type=str, default='LSTNet',
+parser.add_argument('--model', type=str, default='LSTNetAttConvDirect',
                     help='')
 parser.add_argument('--hidCNN', type=int, default=100,
                     help='number of CNN hidden units')
@@ -107,7 +107,7 @@ parser.add_argument('--seed', type=int, default=54321,
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--log_interval', type=int, default=2000, metavar='N',
                     help='report interval')
-parser.add_argument('--save', type=str,  default='../syn-f-rse-24',
+parser.add_argument('--save', type=str,  default='../LSTNetLogs/exc-att2-rse-24',
                     help='path to save the final model')
 parser.add_argument('--cuda', type=str, default=True)
 parser.add_argument('--optim', type=str, default='adam')
@@ -146,17 +146,18 @@ optim = Optim.Optim(
 
 history = []
 
-model, optim, history = load_checkpoint(os.path.join(args.save, 'model.pt'), model, optim.optimizer, history)
+model, optim, history = load_checkpoint(os.path.join(args.save, 'best_model.pt'), model, optim.optimizer, history)
 pred, truth  = preds(Data, Data.train[0], Data.train[1], model, 300);
 
 
 print (pred.shape)
 print (truth.shape)
 
-x_axs = range(2000,pred.shape[0])
-plt.plot(x_axs,pred[2000:, 0], color = 'b', label = 'prediction', linewidth=0.7)
-plt.plot(x_axs,truth[2000:, 0], color = 'y', label = 'ground truth', linewidth=0.7)
+x_axs = range(0,pred.shape[0])
+plt.plot(x_axs,pred[:, 0], color = 'b', label = 'prediction', linewidth=0.7)
+plt.plot(x_axs,truth[:, 0], color = 'y', label = 'ground truth', linewidth=0.7)
 # plt.title('LSTNet w/o AR on Synthetic Data')
-plt.title('Full LSTNet Model on Synthetic Data')
+# plt.title('Full LSTNet Model on Synthetic Data')
+plt.title('Attention Model on Exchange Rate Data')
 plt.legend()
-plt.savefig('full-lstnet-synthetic.png')
+plt.savefig('attention-exchangerate.png')

@@ -9,7 +9,7 @@ from soft_dtw import SoftDTW
 
 import torch
 import torch.nn as nn
-from models import LSTNetAttConvDirect
+from models import LSTNetAttention
 import numpy as np;
 import importlib
 
@@ -119,7 +119,7 @@ def load_checkpoint(checkpoint_path, model, optimizer, history):
 parser = argparse.ArgumentParser(description='PyTorch Time series forecasting')
 parser.add_argument('--data', type=str, required=True,
                     help='location of the data file')
-parser.add_argument('--model', type=str, default='LSTNetAttConvDirect',
+parser.add_argument('--model', type=str, default='LSTNetAttention',
                     help='')
 parser.add_argument('--hidCNN', type=int, default=100,
                     help='number of CNN hidden units')
